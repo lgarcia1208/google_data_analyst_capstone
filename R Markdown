@@ -1,0 +1,209 @@
+---
+title: "Bellabeat Capstone Project"
+author: "Luis Garcia"
+date: "2023-11-18"
+output:
+  pdf_document: default
+  html_document: default
+---
+# Introduction
+
+This R Markdown document explores Fitbit data, analyzing trends and patterns.
+
+## Load Packages
+
+```{r load-packages, include=TRUE, echo=TRUE}
+install.packages("tidyverse")
+install.packages("here")
+install.packages("skimr")
+install.packages("lubridate")
+install.packages("janitor")
+install.packages("viridis")
+install.packages("ggpubr")
+install.packages("scales")
+install.packages("ggrepel")
+install.packages("plotly")
+install.packages("RColorBrewer")
+install.packages("readr")
+
+library(tidyverse)
+library(ggpubr)
+library(lubridate)
+library(skimr)
+library(janitor)
+library(viridis)
+library(scales)
+library(ggrepel)
+library(plotly)
+library(RColorBrewer)
+library(readr)
+```
+
+## Load data
+
+```{r - Load Data}
+daily_activity <- read_csv("Fitabase Data 4.12.16-5.12.16/dailyActivity_merged.csv")
+hourly_calories <- read_csv("Fitabase Data 4.12.16-5.12.16/hourlyCalories_merged.csv")
+hourly_intensities <- read_csv("Fitabase Data 4.12.16-5.12.16/hourlyIntensities_merged.csv")
+hourly_steps <- read_csv("Fitabase Data 4.12.16-5.12.16/hourlySteps_merged.csv")
+sleep_day <- read_csv("Fitabase Data 4.12.16-5.12.16/sleepDay_merged.csv")
+daily_intensities <- read_csv("Fitabase Data 4.12.16-5.12.16/dailyIntensities_merged.csv")
+
+head(sleep_day)
+head(daily_activity)
+head(hourly_calories)
+head(hourly_intensities)
+head(hourly_steps)
+```
+
+## Data cleaning and formatting
+### Check for duplicates and missing values
+
+```{r - data cleaning}
+sum(duplicated(daily_activity))
+sum(duplicated(hourly_calories))
+sum(duplicated(hourly_intensities))
+sum(duplicated(sleep_day))
+
+sleep_day <- sleep_day %>% 
+  distinct() %>%
+  drop_na()
+
+hourly_calories <- hourly_calories %>%
+  distinct() %>%
+  drop_na()
+
+hourly_steps <- hourly_steps %>%
+  distinct() %>%
+  drop_na()
+
+hourly_intensities <- hourly_intensities %>%
+  distinct() %>%
+  drop_na()
+
+daily_activity <- daily_activity %>%
+  distinct() %>%
+  drop_na()
+
+sum(duplicated(daily_activity))
+sum(duplicated(hourly_calories))
+sum(duplicated(hourly_intensities))
+sum(duplicated(sleep_day))
+
+sum(is.na(daily_activity))
+sum(is.na(hourly_calories))
+sum(is.na(hourly_intensities))
+sum(is.na(sleep_day))
+```
+
+
+## Exploratory Data Analysis
+### Daily activity trends
+
+```{r - data analysis}
+daily_activity <- daily_activity %>%
+  mutate(ActivityDate = as.POSIXct(ActivityDate, format = "%m/%d/%Y"))
+
+ggplot(daily_activity, aes(x = ActivityDate, y = TotalSteps)) +
+  geom_line(color = "#4CAF50", size = 1.5) +  # Green line
+  labs(title = "Smart Device Usage Trend",
+       x = "Date",
+       y = "Total Steps",
+       caption = "Source: Your Data") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    plot.caption = element_text(size = 8, hjust = 0)
+  )
+```
+
+### Hourly Calory Analysis 
+
+```{r - hourly calory}
+ggplot(hourly_calories, aes(x = ActivityHour, y = Calories)) +
+  geom_line(color = "#4CAF50", size = 1.5) +  # Green line
+  labs(title = "Hourly Calories Burned Trend",
+       x = "Hour",
+       y = "Calories Burned",
+       caption = "Source: Your Data") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 16, hjust = 0.5, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    plot.caption = element_text(size = 8, hjust = 0)
+  )
+```
+
+## Participant Engagement Analysis
+### Calculate Usage Categories
+
+```{r - usage categories}
+daily_use2 <- daily_activity %>%
+  filter(TotalSteps > 200) %>% 
+  group_by(Id) %>%
+  summarize(ActivityDate = sum(n())) %>%
+  mutate(Usage = case_when(
+    ActivityDate >= 1 & ActivityDate <= 14 ~ "Low Use",
+    ActivityDate >= 15 & ActivityDate <= 21 ~ "Moderate Use", 
+    ActivityDate >= 22 & ActivityDate <= 31 ~ "High Use")) %>% 
+  mutate(Usage = factor(Usage, level = c('Low Use','Moderate Use','High Use'))) %>% 
+  rename(daysused = ActivityDate) %>% 
+  group_by(Usage)
+
+daily_use <- daily_activity %>% 
+  left_join(daily_use2, by = 'Id') %>%
+  group_by(Usage) %>% 
+  summarise(participants = n_distinct(Id)) %>% 
+  mutate(perc = participants/sum(participants)) %>% 
+  arrange(perc) %>% 
+  mutate(perc = scales::percent(perc))
+
+ggplot(daily_use, aes(x = "", y = participants, fill = Usage)) +
+  geom_bar(stat = "identity", color = "white") +
+  coord_polar("y", start = 0) +
+  theme_void() +
+  theme(legend.position = "bottom") +
+  geom_text(aes(label = perc), position = position_stack(vjust = 0.5)) +
+  labs(title = "Slices of Activity",
+       subtitle = "Exploring the pie of participant engagement",
+       caption = "Data Source: Fitbit - Kaggle")
+```
+
+## Average Steps and Calories per Day of the Week
+### Average Steps Walked
+
+```{r - average steps}
+daily_activity$ActivityDate <- as.Date(daily_activity$ActivityDate)
+
+daily_activity$DayOfWeek <- factor(weekdays(daily_activity$ActivityDate), 
+  levels = c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"), ordered = TRUE)
+
+average_steps <- daily_activity %>%
+  group_by(DayOfWeek) %>%
+  summarize(AvgSteps = mean(TotalSteps))
+
+ggplot(average_steps, aes(x = DayOfWeek, y = AvgSteps, fill = DayOfWeek)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Average Steps Walked per Day of the Week",
+       x = "Day of the Week",
+       y = "Average Steps")
+```
+
+### Average Calories Burned
+
+```{r - average calories}
+average_calories <- daily_activity %>%
+  group_by(DayOfWeek) %>%
+  summarize(AvgCalories = mean(Calories))
+
+ggplot(average_calories, aes(x = DayOfWeek, y = AvgCalories, fill = DayOfWeek)) +
+  geom_bar(stat = "identity", color = "white") +
+  theme_minimal() +
+  labs(title = "Average Calories Burned per Day of the Week",
+       x = "Day of the Week",
+       y = "Average Calories")
+```
